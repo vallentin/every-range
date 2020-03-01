@@ -11,6 +11,9 @@ pub enum EveryRangeKind {
     Excluded,
 }
 
+// TODO: EveryRangeIter is not very lenient, consider if `range.start > self.end` and `range.end > self.end` should stop the iterator, instead of panicking
+// TODO: The question is, if so, does it ignore the last range? does it clamp it? does it just return it anyways and stop after?
+
 #[allow(missing_debug_implementations)]
 pub struct EveryRangeIter<I>
 where
@@ -87,3 +90,145 @@ pub trait EveryRange: Sized + Iterator<Item = Range<usize>> {
 }
 
 impl<T> EveryRange for T where T: Iterator<Item = Range<usize>> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_range_matches1() {
+        let text = "Foo12Bar34Baz56";
+
+        use EveryRangeKind::*;
+        let expected = [
+            ((Included, 0..1), "F"),
+            ((Included, 1..2), "o"),
+            ((Included, 2..3), "o"),
+            ((Excluded, 3..5), "12"),
+            ((Included, 5..6), "B"),
+            ((Included, 6..7), "a"),
+            ((Included, 7..8), "r"),
+            ((Excluded, 8..10), "34"),
+            ((Included, 10..11), "B"),
+            ((Included, 11..12), "a"),
+            ((Included, 12..13), "z"),
+            ((Excluded, 13..15), "56"),
+        ];
+
+        let mut iter_actual = text
+            .match_indices(char::is_alphabetic)
+            .map(|(start, part)| {
+                let end = start + part.len();
+                start..end
+            })
+            .every_range(text.len())
+            .map(|(kind, range)| ((kind, range.clone()), &text[range]));
+
+        for expected in expected.iter().cloned() {
+            assert_eq!(Some(expected), iter_actual.next());
+        }
+
+        assert_eq!(None, iter_actual.next());
+    }
+
+    #[test]
+    fn every_range_matches2() {
+        let text = "Foo12Bar34Baz56";
+
+        use EveryRangeKind::*;
+        let expected = [
+            ((Excluded, 0..3), "Foo"),
+            ((Included, 3..4), "1"),
+            ((Included, 4..5), "2"),
+            ((Excluded, 5..8), "Bar"),
+            ((Included, 8..9), "3"),
+            ((Included, 9..10), "4"),
+            ((Excluded, 10..13), "Baz"),
+            ((Included, 13..14), "5"),
+            ((Included, 14..15), "6"),
+        ];
+
+        let mut iter_actual = text
+            .match_indices(char::is_numeric)
+            .map(|(start, part)| {
+                let end = start + part.len();
+                start..end
+            })
+            .every_range(text.len())
+            .map(|(kind, range)| ((kind, range.clone()), &text[range]));
+
+        for expected in expected.iter().cloned() {
+            assert_eq!(Some(expected), iter_actual.next());
+        }
+
+        assert_eq!(None, iter_actual.next());
+    }
+
+    #[test]
+    #[should_panic = "assertion failed: next.end <= self.end"]
+    fn range_start_after_end() {
+        [0..2, 4..6].iter().cloned().every_range(3).for_each(|_| {});
+    }
+
+    #[test]
+    #[should_panic = "assertion failed: next.end <= self.end"]
+    fn range_end_after_end() {
+        [0..2, 4..6].iter().cloned().every_range(5).for_each(|_| {});
+    }
+
+    #[test]
+    #[should_panic = "assertion failed: self.index <= next.start"]
+    fn range_start_after_index() {
+        [0..4, 2..6].iter().cloned().every_range(5).for_each(|_| {});
+    }
+
+    #[test]
+    #[should_panic = "assertion failed: self.index <= next.start"]
+    fn ranges_out_of_order1() {
+        [4..6, 0..2, 8..10]
+            .iter()
+            .cloned()
+            .every_range(20)
+            .for_each(|_| {});
+    }
+
+    #[test]
+    #[should_panic = "assertion failed: self.index <= next.start"]
+    fn ranges_out_of_order2() {
+        [8..10, 0..2, 4..6]
+            .iter()
+            .cloned()
+            .every_range(20)
+            .for_each(|_| {});
+    }
+
+    #[test]
+    #[should_panic = "assertion failed: self.index <= next.start"]
+    fn ranges_out_of_order3() {
+        [0..2, 8..10, 4..6]
+            .iter()
+            .cloned()
+            .every_range(20)
+            .for_each(|_| {});
+    }
+
+    #[test]
+    #[should_panic = "assertion failed: self.index <= next.start"]
+    fn ranges_out_of_order4() {
+        [4..6, 8..10, 0..2]
+            .iter()
+            .cloned()
+            .every_range(20)
+            .for_each(|_| {});
+    }
+
+    #[test]
+    #[should_panic = "assertion failed: self.index <= next.start"]
+    fn ranges_out_of_order5() {
+        [8..10, 4..6, 0..2]
+            .iter()
+            .cloned()
+            .every_range(20)
+            .for_each(|_| {});
+    }
+}
