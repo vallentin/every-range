@@ -1,5 +1,10 @@
 # every-range
 
+[![Build Status](https://travis-ci.org/vallentin/every-range.svg?branch=master)](https://travis-ci.org/vallentin/every-range)
+[![Latest Version](https://img.shields.io/crates/v/every-range.svg)](https://crates.io/crates/every-range)
+[![Docs](https://docs.rs/every-range/badge.svg)](https://docs.rs/every-range)
+[![License](https://img.shields.io/github/license/vallentin/every-range.svg)](https://github.com/vallentin/every-range)
+
 This crate implements an extension to [`Iterator`],
 which features an [`every_range`] method
 on any [`Iterator`] with an [`Item`] of [`Range<usize>`].
