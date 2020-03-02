@@ -1,19 +1,156 @@
+//! This crate implements an extension to [`Iterator`],
+//! which features an [`every_range`] method
+//! on any [`Iterator`] with an [`Item`] of [`Range<usize>`].
+//!
+//! [`every_range`]: trait.EveryRange.html#method.every_range
+//!
+//! [`Iterator`]: https://doc.rust-lang.org/stable/std/iter/trait.Iterator.html
+//! [`Item`]: https://doc.rust-lang.org/stable/std/iter/trait.Iterator.html#associatedtype.Item
+//!
+//! [`Range`]: https://doc.rust-lang.org/stable/std/ops/struct.Range.html
+//! [`Range<usize>`]: https://doc.rust-lang.org/stable/std/ops/struct.Range.html
+//!
+//! [`EveryRangeIter`] iterates over [`Range`]s and "fill in"
+//! missing ranges, i.e. the gap between two consecutive ranges.
+//! The original ranges and the generated ones,
+//! can be distinguished by the [`Included`] and
+//! [`Excluded`] enum variants.
+//!
+//! [`EveryRangeIter`]: struct.EveryRangeIter.html
+//! [`Included`]: enum.EveryRangeKind.html#variant.Included
+//! [`Excluded`]: enum.EveryRangeKind.html#variant.Excluded
+//!
+//! [`EveryRangeIter`] is useful when the ranges being iterated
+//! are related to substrings that later are used to replaced
+//! parts in a string.
+//!
+//! # Example: How does it work?
+//!
+//! ```no_run
+//! use every_range::EveryRange;
+//!
+//! // Lets use text as an example, but it could be anything
+//! let text = "Foo rust-lang.org Bar
+//! Baz crates.io Qux";
+//!
+//! // Get some ranges from somewhere
+//! let ranges = vec![
+//!     4..17,  // "rust-lang.org"
+//!     26..35, // "crates.io"
+//! ];
+//!
+//! // `text.len()` tells `EveryRange` the end, so it knows
+//! // whether to produce an extra range after or not
+//! let iter = ranges.into_iter().every_range(text.len());
+//!
+//! // The input `ranges` result in `Included` every other range is `Excluded`
+//! for (kind, range) in iter {
+//!     println!("{:?} {:>2?} - {:?}", kind, range.clone(), &text[range]);
+//! }
+//! ```
+//!
+//! This will output the following:
+//!
+//! ```text
+//! Excluded  0.. 4 - "Foo "
+//! Included  4..17 - "rust-lang.org"
+//! Excluded 17..26 - " Bar\nBaz "
+//! Included 26..35 - "crates.io"
+//! Excluded 35..39 - " Qux"
+//! ```
+//!
+//! # Example: "Autolink" or HTMLify URLs
+//!
+//! Using [`every_range`] it is easy to collect ranges or
+//! substring into a [`String`].
+//!
+//! [`String`]: https://doc.rust-lang.org/stable/std/string/struct.String.html
+//!
+//! ```no_run
+//! use std::borrow::Cow;
+//! use every_range::{EveryRange, EveryRangeKind};
+//!
+//! let text = "Foo rust-lang.org Bar
+//! Baz crates.io Qux";
+//!
+//! // For URLs input ranges could be produced by linkify
+//! let ranges = vec![
+//!     4..17,  // "rust-lang.org"
+//!     26..35, // "crates.io"
+//! ];
+//!
+//! let output = ranges
+//!     .into_iter()
+//!     .every_range(text.len())
+//!     .map(|(kind, range)| {
+//!         if kind == EveryRangeKind::Included {
+//!             let url = &text[range];
+//!             format!("<a href=\"{0}\">{0}</a>", url).into()
+//!         } else {
+//!             Cow::Borrowed(&text[range])
+//!         }
+//!     })
+//!     .collect::<Vec<_>>()
+//!     .concat();
+//!
+//! println!("{}", output);
+//! ```
+//!
+//! This will output the following:
+//!
+//! ```text
+//! Foo <a href="rust-lang.org">rust-lang.org</a> Bar
+//! Baz <a href="crates.io">crates.io</a> Qux
+//! ```
+
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 #![deny(missing_debug_implementations)]
 #![warn(clippy::all)]
 
 use std::iter::FusedIterator;
 use std::ops::Range;
 
+/// `EveryRangeKind` can be used to distinguish original input
+/// ranges from generates ranges.
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum EveryRangeKind {
+    /// `Included` ranges are the ones produces by the inner [`Iterator`].
+    ///
+    /// [`Iterator`]: https://doc.rust-lang.org/stable/std/iter/trait.Iterator.html
     Included,
+
+    /// Excluded ranges are the ones generated dynamically by [`EveryRangeIter`].
+    ///
+    /// [`EveryRangeIter`]: struct.EveryRangeIter.html
     Excluded,
 }
 
 // TODO: EveryRangeIter is not very lenient, consider if `range.start > self.end` and `range.end > self.end` should stop the iterator, instead of panicking
 // TODO: The question is, if so, does it ignore the last range? does it clamp it? does it just return it anyways and stop after?
 
+/// `EveryRangeIter` iterates over [`Range`]s and "fill in"
+/// missing ranges, i.e. the gap between two consecutive ranges.
+/// The original ranges and the generated ones,
+/// can be distinguished by the [`Included`] and
+/// [`Excluded`] enum variants.
+///
+/// [`EveryRangeIter`]: struct.EveryRangeIter.html
+/// [`Included`]: enum.EveryRangeKind.html#variant.Included
+/// [`Excluded`]: enum.EveryRangeKind.html#variant.Excluded
+///
+/// [`Range`]: https://doc.rust-lang.org/stable/std/ops/struct.Range.html
+///
+/// # Panics
+///
+/// Currently, `EveryRangeIter` resorts to panicking
+/// in the following conditions. `EveryRangeIter` might
+/// be made more lenient in the future, if the behavior
+/// can be better consistently defined without panicking.
+///
+/// - Panics if [`Range`]s are received out of order.
+/// - Panics if [`Range`]s overlap.
+/// - Panics if any [`Range`] exceeds the `end` of the `EveryRangeIter`.
 #[allow(missing_debug_implementations)]
 pub struct EveryRangeIter<I>
 where
@@ -29,6 +166,15 @@ impl<I> EveryRangeIter<I>
 where
     I: Iterator<Item = Range<usize>>,
 {
+    /// Create an `EveryRangeIter` with an `iter` and `end`,
+    /// which represents the "end point". Thereby, if `end` is
+    /// greater than the last [`range.end`] then an ending
+    /// [`Excluded`] range is generated, otherwise no additional
+    /// ending range is generated.
+    ///
+    /// [`Excluded`]: enum.EveryRangeKind.html#variant.Excluded
+    ///
+    /// [`range.end`]: https://doc.rust-lang.org/stable/std/ops/struct.Range.html#structfield.end
     #[inline]
     pub fn new(iter: I, end: usize) -> Self {
         Self {
@@ -82,7 +228,24 @@ where
 
 impl<I> FusedIterator for EveryRangeIter<I> where I: Iterator<Item = Range<usize>> {}
 
+/// Trait which implements `every_range` to get a `EveryRangeIter`.
+///
+/// *[See `EveryRangeIter` for more information.][`EveryRangeIter`]*
+///
+/// [`every_range`]: trait.EveryRange.html#method.every_range
+/// [`EveryRangeIter`]: struct.EveryRangeIter.html
 pub trait EveryRange: Sized + Iterator<Item = Range<usize>> {
+    /// Create an [`EveryRangeIter`] with `end`, which represents
+    /// the "end point". Thereby, if `end` is greater than the last
+    /// [`range.end`] then an ending [`Excluded`] range is generated,
+    /// otherwise no additional ending range is generated.
+    ///
+    /// *[See `EveryRangeIter` for more information.][`EveryRangeIter`]*
+    ///
+    /// [`EveryRangeIter`]: struct.EveryRangeIter.html
+    /// [`Excluded`]: enum.EveryRangeKind.html#variant.Excluded
+    ///
+    /// [`range.end`]: https://doc.rust-lang.org/stable/std/ops/struct.Range.html#structfield.end
     #[inline]
     fn every_range(self, end: usize) -> EveryRangeIter<Self> {
         EveryRangeIter::new(self, end)
