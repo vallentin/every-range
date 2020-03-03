@@ -31,6 +31,21 @@ can be distinguished by the [`Included`] and
 are related to substrings that later are used to replaced
 parts in a string.
 
+## Usage
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+every-range = "0.1"
+```
+
+## Releases
+
+Release notes are available in the repo at [CHANGELOG.md].
+
+[CHANGELOG.md]: CHANGELOG.md
+
 ## Example: How does it work?
 
 ```rust
