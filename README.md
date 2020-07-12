@@ -1,5 +1,6 @@
 # every-range
 
+[![Build Status](https://github.com/vallentin/every-range/workflows/Rust/badge.svg)](https://github.com/vallentin/every-range/actions?query=workflow%3ARust)
 [![Build Status](https://travis-ci.org/vallentin/every-range.svg?branch=master)](https://travis-ci.org/vallentin/every-range)
 [![Latest Version](https://img.shields.io/crates/v/every-range.svg)](https://crates.io/crates/every-range)
 [![Docs](https://docs.rs/every-range/badge.svg)](https://docs.rs/every-range)
